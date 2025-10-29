@@ -1,0 +1,39 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import from_json, col, window, sum as _sum, count
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType, FloatType, TimestampType
+import pyspark.sql.functions as F
+
+# Crear sesión de Spark
+spark = SparkSession.builder.appName("EcommerceKafkaStreaming").getOrCreate()
+spark.sparkContext.setLogLevel("WARN")
+
+# Definir esquema del mensaje recibido desde Kafka
+schema = StructType([
+    StructField("order_id", IntegerType()),
+    StructField("category", StringType()),
+    StructField("quantity", IntegerType()),
+    StructField("price", FloatType()),
+    StructField("timestamp", TimestampType())
+])
+
+# Leer del topic de Kafka
+df = spark.readStream.format("kafka") \
+    .option("kafka.bootstrap.servers", "localhost:9092") \
+    .option("subscribe", "ecommerce_orders") \
+    .load()
+
+# Parsear el JSON de los mensajes
+parsed_df = df.select(from_json(col("value").cast("string"), schema).alias("data")).select("data.*")
+
+# Calcular total de ventas y pedidos por categoría en ventanas de 1 minuto
+agg_df = parsed_df \
+    .withColumn("total_sale", col("quantity") * col("price")) \
+    .groupBy(window(col("timestamp"), "1 minute"), col("category")) \
+    .agg(
+        count("*").alias("num_orders"),
+        _sum("total_sale").alias("total_sales")
+    ).orderBy("window")
+
+# Mostrar resultados en la consola
+query = agg_df.writeStream.outputMode("complete").format("console").start()
+query.awaitTermination()

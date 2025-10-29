@@ -1,0 +1,28 @@
+import time
+import json
+import random
+from kafka import KafkaProducer
+
+# Categorías simuladas
+categories = ["Electronics", "Books", "Clothing", "Home", "Toys", "Beauty"]
+
+# Inicializar productor
+producer = KafkaProducer(
+    bootstrap_servers=['localhost:9092'],
+    value_serializer=lambda x: json.dumps(x).encode('utf-8')
+)
+
+order_id = 1000
+
+while True:
+    order = {
+        "order_id": order_id,
+        "category": random.choice(categories),
+        "quantity": random.randint(1, 5),
+        "price": round(random.uniform(10, 500), 2),
+        "timestamp": int(time.time())
+    }
+    producer.send("ecommerce_orders", value=order)
+    print(f"Sent: {order}")
+    order_id += 1
+    time.sleep(1)  # Envía un pedido cada segundo
